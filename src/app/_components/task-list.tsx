@@ -50,6 +50,7 @@ export function TaskList() {
       title: "",
       description: "",
       links: [],
+      todos: [],
       createdAt: Date.now(),
     };
     setTasks(prev => [newTask, ...prev]);
