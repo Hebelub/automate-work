@@ -158,12 +158,17 @@ export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, on
           ) : (
             <div className="space-y-2">
               {(task.todos || []).map((todo) => (
-                <div key={todo.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                <div 
+                  key={todo.id} 
+                  className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => handleToggleTodo(todo.id)}
+                >
                   <input
                     type="checkbox"
                     checked={todo.completed}
                     onChange={() => handleToggleTodo(todo.id)}
                     className="h-4 w-4"
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <span className={`flex-1 ${todo.completed ? 'line-through text-muted-foreground' : ''}`}>
                     {todo.text}
@@ -171,7 +176,10 @@ export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, on
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDeleteTodo(todo.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTodo(todo.id);
+                    }}
                     className="h-6 w-6 p-0 hover:bg-muted hover:text-destructive"
                   >
                     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,7 +221,8 @@ function LinkItem({ link, onUpdate, onDelete }: {
   onUpdate: (updatedLink: Partial<Link>) => void; 
   onDelete: () => void; 
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  // Start in edit mode if the link has no URL (newly created)
+  const [isEditing, setIsEditing] = useState(!link.url.trim());
   const [editData, setEditData] = useState({
     url: link.url,
     description: link.description || "",
@@ -246,25 +255,26 @@ function LinkItem({ link, onUpdate, onDelete }: {
     return { type: 'other', icon: null };
   };
 
-  const handleSave = () => {
-    if (!editData.url.trim()) {
-      alert("URL cannot be empty");
-      return;
-    }
-    
-    try {
-      new URL(editData.url); // Validate URL format
-    } catch {
-      alert("Please enter a valid URL");
-      return;
-    }
-    
-    onUpdate({
-      url: editData.url.trim(),
-      description: editData.description.trim(),
-    });
-    setIsEditing(false);
-  };
+     const handleSave = () => {
+     if (!editData.url.trim()) {
+       // Don't save empty URLs - just exit edit mode
+       setIsEditing(false);
+       return;
+     }
+     
+     try {
+       new URL(editData.url); // Validate URL format
+     } catch {
+       alert("Please enter a valid URL");
+       return;
+     }
+     
+     onUpdate({
+       url: editData.url.trim(),
+       description: editData.description.trim(),
+     });
+     setIsEditing(false);
+   };
 
   const handleCancel = () => {
     setEditData({
@@ -276,87 +286,114 @@ function LinkItem({ link, onUpdate, onDelete }: {
 
   return (
     <div className="border rounded-lg p-3 bg-muted/30">
-      {isEditing ? (
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor={`url-${link.id}`} className="text-sm font-medium text-muted-foreground">
-              URL
-            </Label>
-            <Input
-              id={`url-${link.id}`}
-              value={editData.url}
-              onChange={(e) => setEditData(prev => ({ ...prev, url: e.target.value }))}
-              placeholder="https://example.com"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor={`desc-${link.id}`} className="text-sm font-medium text-muted-foreground">
-              Description (optional)
-            </Label>
-            <Input
-              id={`desc-${link.id}`}
-              value={editData.description}
-              onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Link description"
-              className="mt-1"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleSave}>
-              Save
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleCancel}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              {getLinkInfo(link.url).icon && (
-                <div className="flex-shrink-0 text-muted-foreground">
-                  {getLinkInfo(link.url).icon}
-                </div>
-              )}
+      <div className="space-y-2">
+        <div className="flex justify-between items-start">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {getLinkInfo(link.url).icon && (
+              <div className="flex-shrink-0 text-muted-foreground">
+                {getLinkInfo(link.url).icon}
+              </div>
+            )}
+                         {isEditing ? (
+               <Input
+                 value={editData.url}
+                 onChange={(e) => setEditData(prev => ({ ...prev, url: e.target.value }))}
+                 placeholder="https://example.com"
+                 className="flex-1 min-w-0"
+                 autoFocus={!link.url.trim()}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter') {
+                     handleSave();
+                   } else if (e.key === 'Escape') {
+                     handleCancel();
+                   }
+                 }}
+               />
+             ) : (
               <a
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline break-all font-medium"
+                className="text-primary hover:underline break-all font-medium flex-1 min-w-0"
               >
                 {link.url}
               </a>
-            </div>
-            <div className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsEditing(true)}
-                className="h-7 w-7 p-0 hover:bg-muted"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onDelete}
-                className="h-7 w-7 p-0 hover:bg-muted hover:text-destructive"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </Button>
-            </div>
+            )}
           </div>
-          {link.description && (
-            <p className="text-sm text-muted-foreground">{link.description}</p>
+          <div className="flex gap-1">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSave}
+                  className="h-7 w-7 p-0 hover:bg-muted"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancel}
+                  className="h-7 w-7 p-0 hover:bg-muted"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  className="h-7 w-7 p-0 hover:bg-muted"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onDelete}
+                  className="h-7 w-7 p-0 hover:bg-muted hover:text-destructive"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+        
+        {/* Description field - always visible */}
+        <div className="flex items-center gap-2">
+                     {isEditing ? (
+             <Input
+               value={editData.description}
+               onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
+               placeholder="Link description (optional)"
+               className="flex-1"
+               onKeyDown={(e) => {
+                 if (e.key === 'Enter') {
+                   handleSave();
+                 } else if (e.key === 'Escape') {
+                   handleCancel();
+                 }
+               }}
+             />
+           ) : (
+            link.description && (
+              <p className="text-sm text-muted-foreground flex-1">{link.description}</p>
+            )
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
