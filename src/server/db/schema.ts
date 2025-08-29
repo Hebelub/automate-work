@@ -23,7 +23,21 @@ export const posts = createTable(
       .integer({ mode: "timestamp" })
       .default(sql`(unixepoch())`)
       .notNull(),
-    updatedAt: d.integer({ mode: "timestamp" }).$onUpdate(() => new Date()),
+    updatedAt: d.integer({ mode: "timestamp" }).$onUpdate(() => sql`(unixepoch())`),
   }),
   (t) => [index("name_idx").on(t.name)],
+);
+
+export const links = createTable(
+  "link",
+  (d) => ({
+    id: d.integer({ mode: "number" }).primaryKey({ autoIncrement: true }),
+    url: d.text({ length: 1000 }).notNull(),
+    description: d.text({ length: 1000 }),
+    createdAt: d
+      .integer({ mode: "timestamp" })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  }),
+  (t) => [index("url_idx").on(t.url)],
 );
