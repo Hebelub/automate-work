@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { Label } from "~/components/ui/label";
 import { Badge } from "~/components/ui/badge";
+import { GitHubService, type GitHubPRInfo, type GitHubRepoInfo, type GitHubBranchInfo } from "~/lib/github";
+import { JiraService, type JiraTaskInfo } from "~/lib/jira";
 
 interface Link {
   id: string;
@@ -41,6 +43,8 @@ interface TaskCardProps {
 export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, onDeleteLink }: TaskCardProps) {
   const [newTodoText, setNewTodoText] = useState("");
   const [newDescription, setNewDescription] = useState(task.description || "");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleText, setTitleText] = useState(task.title || "");
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString();
@@ -78,28 +82,86 @@ export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, on
     onUpdate({ description: value });
   };
 
+  // Listen for title suggestions from Jira links
+  useEffect(() => {
+    const handleTitleSuggestion = (event: Event) => {
+      const customEvent = event as CustomEvent<{ source: string; title: string }>;
+      if (customEvent.detail?.source === 'jira' && customEvent.detail?.title) {
+        setTitleText(customEvent.detail.title);
+        onUpdate({ title: customEvent.detail.title });
+        
+        // Show a brief notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        notification.textContent = `Task title updated from Jira: "${customEvent.detail.title}"`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 3000);
+      }
+    };
+
+    window.addEventListener('suggestTaskTitle', handleTitleSuggestion);
+    
+    return () => {
+      window.removeEventListener('suggestTaskTitle', handleTitleSuggestion);
+    };
+  }, [onUpdate]);
+
   return (
     <Card className="hover:shadow-md transition-shadow">
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <CardTitle className="text-xl">{task.title || "Untitled Task"}</CardTitle>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (confirm("Are you sure you want to delete this task?")) {
-                onDelete();
-              }
-            }}
-            className="h-8 w-8 p-0 hover:bg-muted hover:text-destructive"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </Button>
-        </div>
-      </CardHeader>
+             <CardHeader>
+         <div className="flex justify-between items-start">
+           <div className="flex-1">
+             {isEditingTitle ? (
+               <div className="flex items-center gap-2">
+                 <Input
+                   value={titleText}
+                   onChange={(e) => setTitleText(e.target.value)}
+                   className="text-xl font-semibold h-8"
+                   autoFocus
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter') {
+                       onUpdate({ title: titleText });
+                       setIsEditingTitle(false);
+                     } else if (e.key === 'Escape') {
+                       setTitleText(task.title || "");
+                       setIsEditingTitle(false);
+                     }
+                   }}
+                   onBlur={() => {
+                     onUpdate({ title: titleText });
+                     setIsEditingTitle(false);
+                   }}
+                 />
+               </div>
+             ) : (
+               <CardTitle 
+                 className="text-xl cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
+                 onClick={() => setIsEditingTitle(true)}
+               >
+                 {task.title || "Untitled Task"}
+               </CardTitle>
+             )}
+           </div>
+           
+           <Button
+             variant="ghost"
+             size="sm"
+             onClick={() => {
+               if (confirm("Are you sure you want to delete this task?")) {
+                 onDelete();
+               }
+             }}
+             className="h-8 w-8 p-0 hover:bg-muted hover:text-destructive"
+           >
+             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+             </svg>
+           </Button>
+         </div>
+       </CardHeader>
       
       <CardContent className="space-y-4">
         {/* Links Section */}
@@ -227,6 +289,66 @@ function LinkItem({ link, onUpdate, onDelete }: {
     url: link.url,
     description: link.description || "",
   });
+  
+     // GitHub information state
+   const [githubInfo, setGithubInfo] = useState<{
+     type: string;
+     owner: string;
+     repo: string;
+     pr?: string;
+     branch?: string;
+     prInfo?: GitHubPRInfo | null;
+     repoInfo?: GitHubRepoInfo | null;
+     branchInfo?: GitHubBranchInfo | null;
+   } | null>(null);
+   const [isLoadingGithub, setIsLoadingGithub] = useState(false);
+   
+   // Jira information state
+   const [jiraInfo, setJiraInfo] = useState<JiraTaskInfo | null>(null);
+   const [isLoadingJira, setIsLoadingJira] = useState(false);
+
+     // Fetch GitHub and Jira information when URL changes
+   useEffect(() => {
+     if (link.url && !isEditing) {
+       // Fetch GitHub information
+       const fetchGitHubInfo = async () => {
+         setIsLoadingGithub(true);
+         try {
+           const info = await GitHubService.fetchGitHubInfo(link.url);
+           setGithubInfo(info);
+         } catch (error) {
+           console.error('Error fetching GitHub info:', error);
+         } finally {
+           setIsLoadingGithub(false);
+         }
+       };
+
+       // Fetch Jira information
+       const fetchJiraInfo = async () => {
+         setIsLoadingJira(true);
+         try {
+           const info = await JiraService.fetchJiraTaskInfo(link.url);
+           setJiraInfo(info);
+           
+           // If this is a Jira link and we have task info, suggest updating the task title
+           if (info?.summary) {
+             // Emit an event to suggest updating the task title
+             const event = new CustomEvent('suggestTaskTitle', {
+               detail: { title: info.summary, source: 'jira' }
+             });
+             window.dispatchEvent(event);
+           }
+         } catch (error) {
+           console.error('Error fetching Jira info:', error);
+         } finally {
+           setIsLoadingJira(false);
+         }
+       };
+
+       void fetchGitHubInfo();
+       void fetchJiraInfo();
+     }
+   }, [link.url, isEditing]);
 
   // Function to get link type and icon
   const getLinkInfo = (url: string) => {
@@ -371,28 +493,150 @@ function LinkItem({ link, onUpdate, onDelete }: {
           </div>
         </div>
         
-        {/* Description field - always visible */}
-        <div className="flex items-center gap-2">
-                     {isEditing ? (
-             <Input
-               value={editData.description}
-               onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
-               placeholder="Link description (optional)"
-               className="flex-1"
-               onKeyDown={(e) => {
-                 if (e.key === 'Enter') {
-                   handleSave();
-                 } else if (e.key === 'Escape') {
-                   handleCancel();
-                 }
-               }}
-             />
-           ) : (
-            link.description && (
-              <p className="text-sm text-muted-foreground flex-1">{link.description}</p>
-            )
+                 {/* Description field - always visible */}
+         <div className="flex items-center gap-2">
+                      {isEditing ? (
+              <Input
+                value={editData.description}
+                onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Link description (optional)"
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSave();
+                  } else if (e.key === 'Escape') {
+                    handleCancel();
+                  }
+                }}
+              />
+            ) : (
+             link.description && (
+               <p className="text-sm text-muted-foreground flex-1">{link.description}</p>
+             )
+           )}
+         </div>
+         
+                   {/* GitHub Information Display */}
+          {!isEditing && githubInfo && (
+            <div className="mt-3 p-2 bg-muted/20 rounded border-l-2 border-primary/30">
+              {isLoadingGithub ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b border-primary"></div>
+                  Loading GitHub information...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Repository Info */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">Repo:</span>
+                    <span className="text-xs">{githubInfo.owner}/{githubInfo.repo}</span>
+                  </div>
+                  
+                  {/* PR Information */}
+                  {githubInfo.type === 'pr' && githubInfo.prInfo && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-primary">{githubInfo.prInfo.title}</div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>#{githubInfo.pr}</span>
+                        <span>Branch: {githubInfo.prInfo.headRefName}</span>
+                                                <span className={`px-2 py-0.5 rounded text-xs ${
+                           githubInfo.prInfo.mergedAt 
+                             ? 'bg-green-100 text-green-800' 
+                             : githubInfo.prInfo.state === 'OPEN'
+                             ? 'bg-blue-100 text-blue-800'
+                             : 'bg-gray-100 text-gray-800'
+                         }`}>
+                           {githubInfo.prInfo.mergedAt ? 'Merged' : githubInfo.prInfo.state}
+                         </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Branch Information */}
+                  {githubInfo.type === 'branch' && githubInfo.branchInfo && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-primary">Branch: {githubInfo.branchInfo.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Last commit: {githubInfo.branchInfo.commit.commit.message.substring(0, 50)}...
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Repository Information */}
+                  {githubInfo.type === 'repo' && githubInfo.repoInfo && (
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-primary">{githubInfo.repoInfo.name}</div>
+                      {githubInfo.repoInfo.description && (
+                        <div className="text-xs text-muted-foreground">
+                          {githubInfo.repoInfo.description}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>Default: {githubInfo.repoInfo.defaultBranchRef.name}</span>
+                        <span>⭐ {githubInfo.repoInfo.stargazerCount}</span>
+                        <span>🔀 {githubInfo.repoInfo.forkCount}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
-        </div>
+          
+          {/* Jira Information Display */}
+          {!isEditing && jiraInfo && (
+            <div className="mt-3 p-2 bg-muted/20 rounded border-l-2 border-blue-500/30">
+              {isLoadingJira ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-500"></div>
+                  Loading Jira information...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Task Info */}
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-blue-600">{jiraInfo.summary}</div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="font-mono">{jiraInfo.key}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        jiraInfo.status === 'Done' || jiraInfo.status === 'Closed'
+                          ? 'bg-green-100 text-green-800'
+                          : jiraInfo.status === 'In Progress'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {jiraInfo.status}
+                      </span>
+                      {jiraInfo.priority && (
+                        <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-800">
+                          {jiraInfo.priority}
+                        </span>
+                      )}
+                    </div>
+                    {jiraInfo.assignee && (
+                      <div className="text-xs text-muted-foreground">
+                        Assignee: {jiraInfo.assignee}
+                      </div>
+                    )}
+                    {jiraInfo.labels.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {jiraInfo.labels.slice(0, 3).map((label, index) => (
+                          <span key={index} className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                            {label}
+                          </span>
+                        ))}
+                        {jiraInfo.labels.length > 3 && (
+                          <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                            +{jiraInfo.labels.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
       </div>
     </div>
   );
