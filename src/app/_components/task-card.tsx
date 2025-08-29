@@ -9,11 +9,15 @@ import { Label } from "~/components/ui/label";
 import { Badge } from "~/components/ui/badge";
 import { GitHubService, type GitHubPRInfo, type GitHubRepoInfo, type GitHubBranchInfo } from "~/lib/github";
 import { JiraService, type JiraTaskInfo } from "~/lib/jira";
+import { getActionPointsForLinks, type ActionPoint } from "~/lib/action-points";
+import { ActionPoints } from "./action-points";
 
 interface Link {
   id: string;
   url: string;
   description: string;
+  githubInfo?: GitHubPRInfo | GitHubRepoInfo | GitHubBranchInfo | null;
+  jiraInfo?: JiraTaskInfo | null;
 }
 
 interface Todo {
@@ -89,16 +93,6 @@ export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, on
       if (customEvent.detail?.source === 'jira' && customEvent.detail?.title) {
         setTitleText(customEvent.detail.title);
         onUpdate({ title: customEvent.detail.title });
-        
-        // Show a brief notification
-        const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50';
-        notification.textContent = `Task title updated from Jira: "${customEvent.detail.title}"`;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-          document.body.removeChild(notification);
-        }, 3000);
       }
     };
 
@@ -184,14 +178,14 @@ export function TaskCard({ task, onUpdate, onDelete, onAddLink, onUpdateLink, on
             <p className="text-sm text-muted-foreground">No links added yet. Click the + button to get started.</p>
           ) : (
             <div className="space-y-2">
-              {task.links.map((link) => (
-                <LinkItem
-                  key={link.id}
-                  link={link}
-                  onUpdate={(updatedLink) => onUpdateLink(link.id, updatedLink)}
-                  onDelete={() => onDeleteLink(link.id)}
-                />
-              ))}
+                             {task.links.map((link) => (
+                 <LinkItem
+                   key={link.id}
+                   link={link}
+                   onUpdate={(updatedLink) => onUpdateLink(link.id, updatedLink)}
+                   onDelete={() => onDeleteLink(link.id)}
+                 />
+               ))}
             </div>
           )}
         </div>
@@ -583,60 +577,71 @@ function LinkItem({ link, onUpdate, onDelete }: {
             </div>
           )}
           
-          {/* Jira Information Display */}
-          {!isEditing && jiraInfo && (
-            <div className="mt-3 p-2 bg-muted/20 rounded border-l-2 border-blue-500/30">
-              {isLoadingJira ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-500"></div>
-                  Loading Jira information...
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {/* Task Info */}
-                  <div className="space-y-1">
-                    <div className="text-xs font-medium text-blue-600">{jiraInfo.summary}</div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="font-mono">{jiraInfo.key}</span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        jiraInfo.status === 'Done' || jiraInfo.status === 'Closed'
-                          ? 'bg-green-100 text-green-800'
-                          : jiraInfo.status === 'In Progress'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {jiraInfo.status}
-                      </span>
-                      {jiraInfo.priority && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-800">
-                          {jiraInfo.priority}
-                        </span>
-                      )}
-                    </div>
-                    {jiraInfo.assignee && (
-                      <div className="text-xs text-muted-foreground">
-                        Assignee: {jiraInfo.assignee}
-                      </div>
-                    )}
-                    {jiraInfo.labels.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {jiraInfo.labels.slice(0, 3).map((label, index) => (
-                          <span key={index} className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
-                            {label}
-                          </span>
-                        ))}
-                        {jiraInfo.labels.length > 3 && (
-                          <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
-                            +{jiraInfo.labels.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                     {/* Jira Information Display */}
+           {!isEditing && jiraInfo && (
+             <div className="mt-3 p-2 bg-muted/20 rounded border-l-2 border-blue-500/30">
+               {isLoadingJira ? (
+                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                   <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-500"></div>
+                   Loading Jira information...
+                 </div>
+               ) : (
+                 <div className="space-y-2">
+                   {/* Task Info */}
+                   <div className="space-y-1">
+                     <div className="text-xs font-medium text-blue-600">{jiraInfo.summary}</div>
+                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                       <span className="font-mono">{jiraInfo.key}</span>
+                       <span className={`px-2 py-0.5 rounded text-xs ${
+                         jiraInfo.status === 'Done' || jiraInfo.status === 'Closed'
+                           ? 'bg-green-100 text-green-800'
+                           : jiraInfo.status === 'In Progress'
+                           ? 'bg-blue-100 text-blue-800'
+                           : 'bg-gray-100 text-gray-800'
+                       }`}>
+                         {jiraInfo.status}
+                       </span>
+                       {jiraInfo.priority && (
+                         <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-800">
+                           {jiraInfo.priority}
+                         </span>
+                       )}
+                     </div>
+                     {jiraInfo.assignee && (
+                       <div className="text-xs text-muted-foreground">
+                         Assignee: {jiraInfo.assignee}
+                       </div>
+                     )}
+                     {jiraInfo.labels.length > 0 && (
+                       <div className="flex flex-wrap gap-1">
+                         {jiraInfo.labels.slice(0, 3).map((label, index) => (
+                           <span key={index} className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                             {label}
+                           </span>
+                         ))}
+                         {jiraInfo.labels.length > 3 && (
+                           <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                             +{jiraInfo.labels.length - 3} more
+                           </span>
+                         )}
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               )}
+             </div>
+           )}
+           
+           {/* Action Points for this specific link */}
+           {!isEditing && (
+             <ActionPoints 
+               actionPoints={getActionPointsForLinks([{
+                 url: link.url,
+                 githubInfo: githubInfo?.prInfo ?? null,
+                 jiraInfo: jiraInfo
+               }])} 
+             />
+           )}
       </div>
     </div>
   );
